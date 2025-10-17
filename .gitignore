@@ -2,6 +2,7 @@
 
 !__main__.py
 !requirements.txt
+!LICENSE
 !src/beamification/beamification.py
 !src/beamification/blueprint.py
 !src/beamification/entry.py
