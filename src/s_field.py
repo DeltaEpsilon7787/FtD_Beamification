@@ -1,7 +1,7 @@
 from typing import List
 import numpy as np
 
-from blueprint import Block
+from .blueprint import Block
 
 
 ARMOR_BLOCK_FAMILIES = {

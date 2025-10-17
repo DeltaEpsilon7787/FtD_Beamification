@@ -6,8 +6,8 @@ from scipy.ndimage import value_indices
 import numpy as np
 import numpy.typing as npt
 
-from blueprint import Block, GuidMap
-from s_field import ARMOR_BLOCK_FAMILIES
+from .blueprint import Block, GuidMap
+from .s_field import ARMOR_BLOCK_FAMILIES
 
 
 def make_bp_from_field(
