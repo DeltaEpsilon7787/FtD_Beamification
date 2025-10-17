@@ -1,0 +1,9 @@
+!*/
+
+!__main__.py
+!requirements.txt
+!src/beamification/beamification.py
+!src/beamification/blueprint.py
+!src/beamification/entry.py
+!src/beamification/make_result.py
+!src/beamification/s_field.py
