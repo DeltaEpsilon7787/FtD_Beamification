@@ -1,22 +1,24 @@
 from threading import Event
-from typing import Tuple
+from typing import Literal, Tuple
 from tqdm import tqdm
 
 from scipy.cluster.vq import kmeans2
-from scipy.ndimage import value_indices 
+from scipy.ndimage import value_indices
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_array
 
 import numpy as np
 import numpy.typing as npt
 
+BIAS_TYPES = Literal["random"] | Literal["sided"] | Literal["alternate"]
+
 
 def beamify_procedure(
     s_field: npt.NDArray,
     coeffs: Tuple[float, float, float, float, float, float, float, float, float, float],
-    permissions_mask=0b111_111_111,
     blob_size_threshold=4000,
     failed_solutions_signal=None,
+    bias_type: BIAS_TYPES = "random",
 ):
     blobs = []
 
@@ -30,9 +32,7 @@ def beamify_procedure(
             blobs.append(points)
             continue
 
-        _, blob_ids = kmeans2(
-            points.astype(float), cluster_needed, check_finite=False
-        )
+        _, blob_ids = kmeans2(points.astype(float), cluster_needed, check_finite=False)
         blobs_discovered = {}
         for blob_id, point in zip(blob_ids, points):
             if blob_id not in blobs_discovered:
@@ -69,39 +69,39 @@ def beamify_procedure(
             fits_2 = (x + 1, y, z) in coords_set
             fits_3 = fits_2 and (x + 2, y, z) in coords_set
             fits_4 = fits_3 and (x + 3, y, z) in coords_set
-            boundaries.append(permissions_mask & 1 << 8 and fits_2)
+            boundaries.append(fits_2)
             if boundaries[-1]:
                 added.append((i, 10 * i + 1))
-            boundaries.append(permissions_mask & 1 << 7 and fits_3)
+            boundaries.append(fits_3)
             if boundaries[-1]:
                 added.append((i, 10 * i + 2))
-            boundaries.append(permissions_mask & 1 << 6 and fits_4)
+            boundaries.append(fits_4)
             if boundaries[-1]:
                 added.append((i, 10 * i + 3))
 
             fits_2 = (x, y + 1, z) in coords_set
             fits_3 = fits_2 and (x, y + 2, z) in coords_set
             fits_4 = fits_3 and (x, y + 3, z) in coords_set
-            boundaries.append(permissions_mask & 1 << 5 and fits_2)
+            boundaries.append(fits_2)
             if boundaries[-1]:
                 added.append((i, 10 * i + 4))
-            boundaries.append(permissions_mask & 1 << 4 and fits_3)
+            boundaries.append(fits_3)
             if boundaries[-1]:
                 added.append((i, 10 * i + 5))
-            boundaries.append(permissions_mask & 1 << 3 and fits_4)
+            boundaries.append(fits_4)
             if boundaries[-1]:
                 added.append((i, 10 * i + 6))
 
             fits_2 = (x, y, z + 1) in coords_set
             fits_3 = fits_2 and (x, y, z + 2) in coords_set
             fits_4 = fits_3 and (x, y, z + 3) in coords_set
-            boundaries.append(permissions_mask & 1 << 2 and fits_2)
+            boundaries.append(fits_2)
             if boundaries[-1]:
                 added.append((i, 10 * i + 7))
-            boundaries.append(permissions_mask & 1 << 1 and fits_3)
+            boundaries.append(fits_3)
             if boundaries[-1]:
                 added.append((i, 10 * i + 8))
-            boundaries.append(permissions_mask & 1 << 0 and fits_4)
+            boundaries.append(fits_4)
             if boundaries[-1]:
                 added.append((i, 10 * i + 9))
 
@@ -139,7 +139,7 @@ def beamify_procedure(
             configuration_coords.extend(added)
             configuration_data.extend([1] * len(added))
 
-        bounds = Bounds(0, boundaries) # type: ignore
+        bounds = Bounds(0, boundaries)  # type: ignore
 
         constraint = LinearConstraint(
             coo_array(
@@ -151,17 +151,19 @@ def beamify_procedure(
         )
 
         adjusted_coefficients = []
-        for x, y, z in blob:
-            x_c = x / s_field.shape[0]
-            y_c = y / s_field.shape[1]
-            z_c = z / s_field.shape[2]
 
-            if y % 2 == 0 or z % 2 == 0:
-                x_c = 1 - x_c
-            if x % 2 == 0 or z % 2 == 0:
-                y_c = 1 - y_c
-            if x % 2 == 0 or y % 2 == 0:
-                z_c = 1 - z_c
+        for x, y, z in blob:
+            x_c = x / s_field.shape[0] if bias_type != "random" else 0
+            y_c = y / s_field.shape[1] if bias_type != "random" else 0
+            z_c = z / s_field.shape[2] if bias_type != "random" else 0
+
+            if bias_type == "alternate":
+                if y % 2 == 0 or z % 2 == 0:
+                    x_c = 1 - x_c
+                if x % 2 == 0 or z % 2 == 0:
+                    y_c = 1 - y_c
+                if x % 2 == 0 or y % 2 == 0:
+                    z_c = 1 - z_c
 
             adjusted_coefficients.append(coeffs[0])
             # We add a tiny constant bias to
@@ -237,19 +239,23 @@ def get_4m_beams_positions(field):
     return np.array([[], [], []])
 
 
-def beamify(s_field: npt.NDArray, grain_directions="zxy") -> npt.NDArray:
-    coeffs = np.array([
-        4,  # Single blocks are universally bad
-        -2 * 1.1,
-        -3 * 1.15,
-        -4 * 1.2,
-        -2 * 1.1,
-        -3 * 1.15,
-        -4 * 1.2,
-        -2 * 1.1,
-        -3 * 1.15,
-        -4 * 1.2,
-    ])
+def beamify(
+    s_field: npt.NDArray, grain_directions="zxy", bias_type: BIAS_TYPES = "random"
+) -> npt.NDArray:
+    coeffs = np.array(
+        [
+            4,  # Single blocks are universally bad
+            -2 * 1.1,
+            -3 * 1.15,
+            -4 * 1.2,
+            -2 * 1.1,
+            -3 * 1.15,
+            -4 * 1.2,
+            -2 * 1.1,
+            -3 * 1.15,
+            -4 * 1.2,
+        ]
+    )
 
     if divisor := 2 ** grain_directions.index("x"):
         coeffs[1:4] /= divisor
@@ -270,6 +276,7 @@ def beamify(s_field: npt.NDArray, grain_directions="zxy") -> npt.NDArray:
             tuple(coeffs),
             blob_size_threshold=current_zone_size,  # type: ignore
             failed_solutions_signal=signal,
+            bias_type=bias_type,
         )
         bx, by, bz = get_4m_beams_positions(result)
 

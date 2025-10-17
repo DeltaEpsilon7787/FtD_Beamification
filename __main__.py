@@ -88,6 +88,9 @@ if __name__ == "__main__":
         ftd = args.ftd
         bp_path = Path(args.input.name)
         grain = args.grain
+        bias = args.bias
+        exclude_4m_beams = args.exclude_4m_beams
+        exclude_colors = args.exclude_colors
         output = args.output
     elif args.mode is None or args.mode == "gui":
         # GUI mode
@@ -219,5 +222,5 @@ if __name__ == "__main__":
     )
 
     s_field = construct_s_field(blocks, do_exclude_4m, excluded_colors)
-    result = beamify(s_field, grain)
+    result = beamify(s_field, grain, bias_type=bias)
     output.write(make_bp_from_field(result, guid_map, blocks, bp))
