@@ -89,8 +89,8 @@ if __name__ == "__main__":
         bp_path = Path(args.input.name)
         grain = args.grain
         bias = args.bias
-        exclude_4m_beams = args.exclude_4m_beams
-        exclude_colors = args.exclude_colors
+        do_exclude_4m = args.exclude_4m_beams
+        excluded_colors = args.exclude_colors
         output = args.output
     elif args.mode is None or args.mode == "gui":
         # GUI mode
