@@ -19,6 +19,7 @@ def beamify_procedure(
     blob_size_threshold=4000,
     failed_solutions_signal=None,
     bias_type: BIAS_TYPES = "random",
+    debeamify=False,
 ):
     blobs = []
 
@@ -28,7 +29,7 @@ def beamify_procedure(
         points = np.argwhere(armor_mask)
 
         cluster_needed = int(np.ceil(len(points) / blob_size_threshold))
-        if cluster_needed <= 1:
+        if debeamify or cluster_needed <= 1:
             blobs.append(points)
             continue
 
@@ -66,9 +67,9 @@ def beamify_procedure(
             boundaries.append(True)
             added.append((i, 10 * i + 0))
 
-            fits_2 = (x + 1, y, z) in coords_set
-            fits_3 = fits_2 and (x + 2, y, z) in coords_set
-            fits_4 = fits_3 and (x + 3, y, z) in coords_set
+            fits_2 = not debeamify and (x + 1, y, z) in coords_set
+            fits_3 = not debeamify and fits_2 and (x + 2, y, z) in coords_set
+            fits_4 = not debeamify and fits_3 and (x + 3, y, z) in coords_set
             boundaries.append(fits_2)
             if boundaries[-1]:
                 added.append((i, 10 * i + 1))
@@ -79,9 +80,9 @@ def beamify_procedure(
             if boundaries[-1]:
                 added.append((i, 10 * i + 3))
 
-            fits_2 = (x, y + 1, z) in coords_set
-            fits_3 = fits_2 and (x, y + 2, z) in coords_set
-            fits_4 = fits_3 and (x, y + 3, z) in coords_set
+            fits_2 = not debeamify and (x, y + 1, z) in coords_set
+            fits_3 = not debeamify and fits_2 and (x, y + 2, z) in coords_set
+            fits_4 = not debeamify and fits_3 and (x, y + 3, z) in coords_set
             boundaries.append(fits_2)
             if boundaries[-1]:
                 added.append((i, 10 * i + 4))
@@ -92,9 +93,9 @@ def beamify_procedure(
             if boundaries[-1]:
                 added.append((i, 10 * i + 6))
 
-            fits_2 = (x, y, z + 1) in coords_set
-            fits_3 = fits_2 and (x, y, z + 2) in coords_set
-            fits_4 = fits_3 and (x, y, z + 3) in coords_set
+            fits_2 = not debeamify and (x, y, z + 1) in coords_set
+            fits_3 = not debeamify and fits_2 and (x, y, z + 2) in coords_set
+            fits_4 = not debeamify and fits_3 and (x, y, z + 3) in coords_set
             boundaries.append(fits_2)
             if boundaries[-1]:
                 added.append((i, 10 * i + 7))
@@ -240,7 +241,7 @@ def get_4m_beams_positions(field):
 
 
 def beamify(
-    s_field: npt.NDArray, grain_directions="zxy", bias_type: BIAS_TYPES = "random"
+    s_field: npt.NDArray, grain_directions="zxy", bias_type: BIAS_TYPES = "random", debeamify=False,
 ) -> npt.NDArray:
     coeffs = np.array(
         [
@@ -277,6 +278,7 @@ def beamify(
             blob_size_threshold=current_zone_size,  # type: ignore
             failed_solutions_signal=signal,
             bias_type=bias_type,
+            debeamify=debeamify
         )
         bx, by, bz = get_4m_beams_positions(result)
 

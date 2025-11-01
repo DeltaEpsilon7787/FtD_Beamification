@@ -56,12 +56,30 @@ if __name__ == "__main__":
         type=FileType("r"),
     )
     cli_parser.add_argument(
+        "--output",
+        help="Where to save beamified BP to (or - for stdout)",
+        default="-",
+        type=FileType("w"),
+    )
+    cli_parser.add_argument(
+        "--exclude-colors",
+        default="",
+        type=color_string,
+        help="Comma-separated string of colors of blocks we won't touch",
+    )
+
+    cli_subparsers = cli_parser.add_subparsers(title="Procedures", dest="procedure")
+    cli_parser_beamify = cli_subparsers.add_parser(
+        "beamify",
+        help="Convert, to the best of its ability, armor blocks into 4m beams to maximize effective HP",
+    )
+    cli_parser_beamify.add_argument(
         "--grain",
         help="Direction priorities. Should be something like xyz with least important axis being first and most important axis being last",
         choices=["".join(grain) for grain in permutations("xyz", 3)],
         required=True,
     )
-    cli_parser.add_argument(
+    cli_parser_beamify.add_argument(
         "--bias",
         choices=["sided", "alternate", "random"],
         default="random",
@@ -70,28 +88,35 @@ if __name__ == "__main__":
         "`alternate` is like sides, but sides alternate, averaging out HP on all sides. "
         "`random` will place beam haphazardly with no order.",
     )
-    cli_parser.add_argument(
+    cli_parser_beamify.add_argument(
         "--exclude-4m-beams",
         action="store_true",
-        help="If specified, we'll not beamify beams that are already 4m long.",
+        help="If specified, we'll not touch beams that are already 4m long.",
     )
-    cli_parser.add_argument("--exclude-colors", default="", type=color_string)
-    cli_parser.add_argument(
-        "--output",
-        help="Where to save beamified BP to (or - for stdout)",
-        default="-",
-        type=FileType("w"),
+    cli_parser_debeamify = cli_subparsers.add_parser(
+        "debeamify", help="Convert all eligible armor blocks into 1m variants"
     )
 
     args = main_parser.parse_args()
     if args.mode == "cli":
         ftd = args.ftd
         bp_path = Path(args.input.name)
-        grain = args.grain
-        bias = args.bias
-        do_exclude_4m = args.exclude_4m_beams
-        excluded_colors = args.exclude_colors
         output = args.output
+        excluded_colors = args.exclude_colors
+
+        debeamify = args.procedure == "beamify"
+
+        if args.procedure == "beamify":
+            grain = args.grain
+            bias = args.bias
+            do_exclude_4m = args.exclude_4m_beams
+        elif args.procedure == "debeamify":
+            grain = "xyz"
+            bias = "random"
+            do_exclude_4m = False
+        else:
+            raise NotImplemented
+
     elif args.mode is None or args.mode == "gui":
         # GUI mode
         bp_dir = "."
@@ -129,70 +154,77 @@ if __name__ == "__main__":
         output = asksaveasfilename(
             filetypes=[("Blueprint", ".blueprint")],
             initialdir=output_dir,
-            title="Where to save beamified blueprint?",
+            title="Where to save converted blueprint?",
         )
         if not output:
             exit()
         output = FileType("w")(output)
 
-        grains = []
-        if askyesno(
-            "Grain",
-            "Is your craft primarily attacked from the front or back (frontsider)",
-        ):
-            grains.append("z")
-        elif askyesno(
-            "Grain",
-            "Is your craft primarily attacked from the left or right (broadsider)",
-        ):
-            grains.append("x")
-        elif askyesno(
-            "Grain", "Is your craft primarily attacked from above/below? (topsider)"
-        ):
-            grains.append("y")
+        debeamify = askyesno("Mode select", "Do we want to debeamify craft instead?")
+
+        if not debeamify:
+            grains = []
+            if askyesno(
+                "Grain",
+                "Is your craft primarily attacked from the front or back (frontsider)",
+            ):
+                grains.append("z")
+            elif askyesno(
+                "Grain",
+                "Is your craft primarily attacked from the left or right (broadsider)",
+            ):
+                grains.append("x")
+            elif askyesno(
+                "Grain", "Is your craft primarily attacked from above/below? (topsider)"
+            ):
+                grains.append("y")
+            else:
+                showerror("What?")
+                exit()
+
+            if "z" not in grains and askyesno(
+                "Grain",
+                "Do you expect your craft to also possibly be attacked from the front or back?",
+            ):
+                grains.append("z")
+            elif "x" not in grains and askyesno(
+                "Grain",
+                "Do you expect your craft to also possibly be attacked from the left or right?",
+            ):
+                grains.append("x")
+            elif "y" not in grains and askyesno(
+                "Grain",
+                "Do you expect your craft to also possibly be attacked from the top or bottom",
+            ):
+                grains.append("y")
+            else:
+                showerror("Secondary attack direction must be chosen")
+                exit()
+
+            grains.extend({*"xyz"} - {*grains})
+            grains.reverse()
+            grain = "".join(grains)
+
+            bias = "random"
+            if askyesno(
+                "Bias selection",
+                "Do you want beams generally placed in a consistent order with shorter beams on one side? This will cause one side to be slightly weaker HP-wise than the other, but looks nicer.",
+            ):
+                bias = "sided"
+            elif askyesno(
+                "Bias selection",
+                "Do you want beams generally placed in a consistent order, but alternating? This doesn't look nearly as nice, but HP will be more or less consistent.",
+            ):
+                bias = "alternate"
+
+            do_exclude_4m = askyesno(
+                "Exclusion criteria",
+                "Do you want to exclude beams that are already 4m from beamification?",
+            )
         else:
-            showerror("What?")
-            exit()
-
-        if "z" not in grains and askyesno(
-            "Grain",
-            "Do you expect your craft to also possibly be attacked from the front or back?",
-        ):
-            grains.append("z")
-        elif "x" not in grains and askyesno(
-            "Grain",
-            "Do you expect your craft to also possibly be attacked from the left or right?",
-        ):
-            grains.append("x")
-        elif "y" not in grains and askyesno(
-            "Grain",
-            "Do you expect your craft to also possibly be attacked from the top or bottom",
-        ):
-            grains.append("y")
-        else:
-            showerror("Secondary attack direction must be chosen")
-            exit()
-
-        grains.extend({*"xyz"} - {*grains})
-        grains.reverse()
-        grain = "".join(grains)
-
-        bias = "random"
-        if askyesno(
-            "Bias selection",
-            "Do you want beams generally placed in a consistent order with shorter beams on one side? This will cause one side to be slightly weaker HP-wise than the other, but looks nicer.",
-        ):
-            bias = "sided"
-        elif askyesno(
-            "Bias selection",
-            "Do you want beams generally placed in a consistent order, but alternating? This doesn't look nearly as nice, but HP will be more or less consistent."
-        ):
-            bias = "alternate"
-
-        do_exclude_4m = askyesno(
-            "Exclusion criteria",
-            "Do you want to exclude beams that are already 4m from beamification?",
-        )
+            grain = "xyz"
+            bias = "random"
+            do_exclude_4m = False
 
         color_exclusion = askstring(
             "Color exclusion",
@@ -222,5 +254,9 @@ if __name__ == "__main__":
     )
 
     s_field = construct_s_field(blocks, do_exclude_4m, excluded_colors)
-    result = beamify(s_field, grain, bias_type=bias)
-    output.write(make_bp_from_field(result, guid_map, blocks, bp))
+    result = beamify(
+        s_field=s_field, grain_directions=grain, bias_type=bias, debeamify=debeamify
+    )
+    output.write(
+        make_bp_from_field(field=result, guid_map=guid_map, blocks=blocks, og_bp=bp)
+    )
